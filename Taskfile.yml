@@ -1,0 +1,7 @@
+version: '3'
+
+tasks:
+  new:
+    desc: Fetch a new question.
+    cmds:
+      - go run ./cmd {{.CLI_ARGS}}
