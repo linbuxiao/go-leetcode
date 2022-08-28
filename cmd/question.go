@@ -16,9 +16,25 @@ import (
 	"github.com/spf13/afero"
 )
 
+// request url
 const BASE_URL = "https://leetcode.cn"
 const QUESTIONS_URL = "/api/problems/algorithms/"
 const GRAPHQL_URL = "/graphql/"
+const PROBLEM_PREFIX = "/problems"
+
+// request query
+const QUESTION_QUERY = "query questionData($titleSlug: String!) {\n  question(titleSlug: $titleSlug) {\n    questionId\n    titleSlug\n    content\n    translatedTitle\n    sampleTestCase\n   translatedContent\n    codeSnippets {\n      lang\n      langSlug\n      code\n      __typename\n    }\n}\n}\n"
+
+// template
+const TEMPLATE_FILE_URL = "template/question.tmpl"
+const TEMPLATE_QUESTION_DESCRIPTION = "__QUESTION_DESCRIPTION__"
+const TEMPLATE_QUESTION_LINK = "__QUESTION_LINK__"
+const TEMPLATE_PACKAGE_NAME = "__PACKAGE_NAME__"
+const TEMPLATE_CODE = "__CODE__"
+
+// static error
+var ErrCannotFindQuestionByID = errors.New("cannot find question by id")
+var ErrCannotGetGoSnippets = errors.New("cannot get golang code snippets")
 
 type Question struct {
 	client *resty.Client
@@ -42,7 +58,7 @@ func (q *Question) Build() error {
 	}
 	stat := q.getQuestionStatByID(allQuestion)
 	if stat == nil {
-		return errors.New("cannot find question by id")
+		return ErrCannotFindQuestionByID
 	}
 	q.Slug = stat.QuestionTitleSlug
 	return q.setQuestionDetail()
@@ -70,7 +86,7 @@ func (q *Question) getQuestionStatByID(questions *Questions) *StatRepo {
 func (q *Question) setQuestionDetail() error {
 	req := LeetcodeGraphqlRequest{
 		OperationName: "questionData",
-		Query:         "query questionData($titleSlug: String!) {\n  question(titleSlug: $titleSlug) {\n    questionId\n    titleSlug\n    content\n    translatedTitle\n    sampleTestCase\n   translatedContent\n    codeSnippets {\n      lang\n      langSlug\n      code\n      __typename\n    }\n}\n}\n",
+		Query:         QUESTION_QUERY,
 		Variables: struct {
 			TitleSlug string "json:\"titleSlug\""
 		}{
@@ -101,7 +117,7 @@ func (f *QuestionFile) getPackageName() string {
 }
 
 func (f *QuestionFile) loadQuestionTemplate() (string, error) {
-	file, err := f.os.Open("template/question.tmpl")
+	file, err := f.os.Open(TEMPLATE_FILE_URL)
 	if err != nil {
 		return "", err
 	}
@@ -159,7 +175,7 @@ func (f *QuestionFile) buildCode() (string, error) {
 			return c.Code, nil
 		}
 	}
-	return "", errors.New("cannot get golang code snippets")
+	return "", ErrCannotGetGoSnippets
 }
 
 func (f *QuestionFile) injectToDo(code string) string {
@@ -205,10 +221,10 @@ func (f *QuestionFile) Create() error {
 	packageName := f.getPackageName()
 	// create file
 	// 1. render file
-	content := strings.ReplaceAll(questionTemplate, "__QUESTION_DESCRIPTION__", desc)
-	content = strings.ReplaceAll(content, "__QUESTION_LINK__", fmt.Sprintf("https://leetcode.cn/problems/%s", f.Question.Slug))
-	content = strings.ReplaceAll(content, "__CODE__", code)
-	content = strings.ReplaceAll(content, "__PACKAGE_NAME__", packageName)
+	content := strings.ReplaceAll(questionTemplate, TEMPLATE_QUESTION_DESCRIPTION, desc)
+	content = strings.ReplaceAll(content, TEMPLATE_QUESTION_LINK, fmt.Sprintf("%s%s/%s", BASE_URL, PROBLEM_PREFIX, f.Question.Slug))
+	content = strings.ReplaceAll(content, TEMPLATE_CODE, code)
+	content = strings.ReplaceAll(content, TEMPLATE_PACKAGE_NAME, packageName)
 	content = f.injectToDo(content)
 	// 2. create package
 	if err := f.os.Mkdir(packageName, 0755); err != nil {
